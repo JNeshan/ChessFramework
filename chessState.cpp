@@ -172,6 +172,7 @@
       return 0;
     }
   }
+  
   void chessState::printBoard(){
     for(int i = 7; i >= 0; i--){
       output<<"  -------------------------------------\n"<<i+1<<" ";
