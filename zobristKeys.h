@@ -23,7 +23,7 @@ struct zobristKeys {
   }
 
   void deserialize(){
-    int index = 0, size = (numPieceTypes * numColors * numSquares) + 1 + numCastles + numFiles;
+    int index = 0/*, size = (numPieceTypes * numColors * numSquares) + 1 + numCastles + numFiles*/;
     for(int i = 0; i < numPieceTypes * numColors; i++){
       for(int pos = 0; pos < numSquares; pos++){
         pieceSquare[i][pos] = zobristTable[index];

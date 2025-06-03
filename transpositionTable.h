@@ -8,9 +8,9 @@
 #include <cstddef>
 
 
-extern int mateScore ;
+extern int mateScore;
 
-enum tableFlag : uint8_t { NONE, EXACT, LOWER, UPPER };
+enum tableFlag : uint8_t{NONE, EXACT, LOWER, UPPER};
 
 struct tableEntry {
   int depth;

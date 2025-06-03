@@ -3,3 +3,5 @@ main.cpp
 *.txt
 *.py
 .vscode
+run*
+startVenv

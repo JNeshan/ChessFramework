@@ -4,16 +4,14 @@
 
 #include <vector>
 #include <string>
-#include <utility>
 #include <array>
 #include <map>
 #include <cstdint>
 #include <utility>
-#include <string>
 #include <sstream>
 #include <algorithm>
-#include <map>
 #include <cstring>
+#include <ctime>
 #include "attackMasks.hpp"  //files contain precomputed tables that are vital for this program
 #include "magicNumbers.hpp" //the mask tables and magic hashing values are computed in generateTables (change name)
 #include "bitOffset.hpp"    //it does not need to be rerun them but its left to show that I computed all the data manually, but it will still work perfectly if it is
@@ -45,14 +43,16 @@ public:
 
   
   //the real functions
-  void printBoard(bool deleteThis); //outputs current board state for testing
+  void printBoard(); //outputs current board state for testing
   char pieceAt(int pos);
   std::pair<PieceType, Color> pieceAtZob(int pos);
   std::vector<uint16_t> getAllMovesBit();
   std::string searchMove(); //starts minimax search and returns the best move
+  void playerMove(std::string move);
   int minimaxSearch(chessState& state, int depth, bool maxer);
   int evaluationHeuristic(chessState& state);
   int minimaxSearchAB(chessState& state, int depth, int a, int b, int dist, int& mNodes);
+  std::string sPieceAt(int pos);
 
   void initializeZobristKey(); //generates zobrist key from board state, used only at initialization
   

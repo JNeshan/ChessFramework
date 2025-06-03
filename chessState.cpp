@@ -172,15 +172,43 @@
       return 0;
     }
   }
-
+  void chessState::printBoard(){
+    for(int i = 7; i >= 0; i--){
+      output<<"  -------------------------------------\n"<<i+1<<" ";
+      for(int j = 0; j < 8; j++){
+        output<<sPieceAt(8*i + j)<<" | ";
+      }
+      output<<std::endl;
+    }
+    output<<"  -------------------------------------\n";
+    output<<"  a    b    c    d    e    f    g    h"<<std::endl;
+  }
+  
   char pieceChars[2][6] = { //printing
     {'P', 'N', 'B', 'R', 'Q', 'K'},
     {'p', 'n', 'b', 'r', 'q', 'k'}
   };
 
+  std::string sPieceChars[2][6] = {
+    {"♟", "♞", "♝", "♜", "♛", "♚"},
+    {"♙", "♘", "♗", "♖", "♕", "♔"}
+  };
+
+  
+  std::string chessState::sPieceAt(int pos){
+    uint64_t bitPos = 1ULL << pos;
+    for(int color = 0; color < 2; color++){
+      for(int type = 0; type < 6; type++){
+        if(bitboards[color][type] & bitPos){
+          return sPieceChars[color][type];
+        }
+      }
+    }
+    return "　";
+  }
+
   char chessState::pieceAt(int pos){
     uint64_t bitPos = 1ULL << pos;
-    
     for(int color = 0; color < 2; color++){
       for(int type = 0; type < 6; type++){
         if(bitboards[color][type] & bitPos){
@@ -525,8 +553,14 @@
     return false;
   }
 
+  void chessState::playerMove(std::string move){
+    output<<move<<"\n\n";
+    uint16_t m = fromAlgebraic(move);
+    updateBoard(m);
+  }
+
   std::string chessState::searchMove(){
-    int maxDepth = 6, bestScore = -1000020, maxNodes = -1;
+    int maxDepth = 5, bestScore = -1000020, maxNodes = -1;
     uint16_t bestMove = 0ULL;
     std::vector<uint16_t> moves = getAllMovesBit(); //generates fully legal move list
     int nodeBest;
@@ -545,32 +579,32 @@
       return tArank < tBrank;
     });
     
-    std::cout<<moves.size()<<std::endl;
-    for(auto c: moves){
-      int initial = (c >> 6) & 0x3F;
-      int destination = c & 0x3F;
-      std::string m = toAlgebraic(initial) + toAlgebraic(destination);
-      switch (c >> 12 & 0xF)
-      {
-        case 0b0001:
-        m += "b";
-        break;
-        case 0b0010:
-        m += "n";
-        break;
-        case 0b0100:
-        m += "q";
-        break;
-        case 0b1000:
-        m += "r";
-        break;
-        default:
-        break;
-      }
-      
-      std::cout<<m<<" ";
-    }
-    std::cout<<" \n";
+    //std::cout<<moves.size()<<std::endl;
+    //for(auto c: moves){
+    //  int initial = (c >> 6) & 0x3F;
+    //  int destination = c & 0x3F;
+    //  std::string m = toAlgebraic(initial) + toAlgebraic(destination);
+    //  switch (c >> 12 & 0xF)
+    //  {
+    //    case 0b0001:
+    //    m += "b";
+    //    break;
+    //    case 0b0010:
+    //    m += "n";
+    //    break;
+    //    case 0b0100:
+    //    m += "q";
+    //    break;
+    //    case 0b1000:
+    //    m += "r";
+    //    break;
+    //    default:
+    //    break;
+    //  }
+    //  
+    //  std::cout<<m<<" ";
+    //}
+    //std::cout<<" \n";
     
     std::vector<uint16_t> legalMoves(0); //creates new list of only fully legal moves
     for(auto c: moves){
@@ -587,7 +621,6 @@
       return "Draw";
     }
     
-
     int a = -22222222, b = -a;
     int score;
     for(auto c: legalMoves){
@@ -626,6 +659,7 @@
     }
     std::cout<<moveString<<std::endl;
     updateBoard(bestMove);
+    printBoard();
     return moveString;
   }
 
