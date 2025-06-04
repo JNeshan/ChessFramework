@@ -3,7 +3,7 @@
   #include <iostream>
   #include <fstream>
   #include "chessState.h"
-
+  #include<exception>
   std::ofstream output("simGame.txt");
 
   inline int position(int rank, int file){
@@ -46,6 +46,7 @@
   const std::array<PieceType, 6> chessState::allPieces  = {PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING}; 
   const std::array<Color, 2> pieceColors = {WHITE, BLACK};
   const std::array<int, 6> chessState::pieceValues = {100, 320, 330, 500, 900, 20000}; //change
+  int chessState::nodesExplored = 0;
 
   chessState::chessState(std::string iState){  
     tTable = new transpositionTable(64);
@@ -123,7 +124,7 @@
     stream >> special; //set full turn count
     fullTurns = std::stoi(special);
 
-    zobStruct = zobristKeys();
+    zobStruct = new zobristKeys();
     initializeZobristKey();
   }
 
@@ -183,6 +184,12 @@
     }
     output<<"  -------------------------------------\n";
     output<<"  a    b    c    d    e    f    g    h"<<std::endl;
+    if(!active){
+      output<<"White to move"<<std::endl;
+    }
+    else{
+      output<<"Black to move"<<std::endl;
+    }
   }
   
   char pieceChars[2][6] = { //printing
@@ -194,7 +201,6 @@
     {"♟", "♞", "♝", "♜", "♛", "♚"},
     {"♙", "♘", "♗", "♖", "♕", "♔"}
   };
-
   
   std::string chessState::sPieceAt(int pos){
     uint64_t bitPos = 1ULL << pos;
@@ -372,6 +378,15 @@
   bool chessState::legalMove(uint16_t move){ //checks if moves are legal, creates temporary state values without mutating members
     int initial = (move >> 6) & 0x3F, destination = move &0x3F;
     uint64_t newState = (((occupied[0] | occupied[1] ) & ~(1ULL << initial)) | (1ULL << destination));
+
+    int kingPos = __builtin_ctzll(bitboards[active][KING]);
+    if(destination == kingPos){
+      std::cout<<"King capture passed"<<std::endl;
+      printBoard();
+      throw std::runtime_error("king capture");
+      return false;
+    }
+
     if(bitboards[active][KING] & (1ULL << initial)){
       if(destination - initial == 2){ //castling check safety, other checks handeled in pseudo-valid
         if(isThreatenedBit(initial) || isThreatenedBit(initial+1) || isThreatenedBit(initial+2)){
@@ -389,7 +404,7 @@
           return true;
         }
       }
-
+      int kingPos = __builtin_ctzll(bitboards[active][KING]);
       uint64_t hold = occupied[!active];
       occupied[!active] &= ~(1ULL << destination);
       bool legal = !isThreatenedBit(destination, newState);
@@ -397,19 +412,21 @@
       return legal;
     }
     else{
-      
-      int kingPos = __builtin_ctzll(bitboards[active][KING]);
+      kingPos = __builtin_ctzll(bitboards[active][KING]);
       uint64_t hold = occupied[!active];
       occupied[!active] &= ~(1ULL << destination);
 
       bool legal = !isThreatenedBit(kingPos, newState);
-      occupied[!active] = hold;
+      occupied[!active] = hold;    
       return legal;
     }
+    
   }
 
   bool chessState::updateBoard(uint16_t move){ //handles toggling the zobrist key
     
+    nodesExplored++;
+
     uint64_t tmpLeft = lMoves >> 16, tmpRight = rMoves >> 16; //update previous moves
     tmpLeft |= (rMoves &0xFFFFULL) << 48;
     tmpRight |= (uint64_t(move) << 48);
@@ -420,26 +437,26 @@
 
     uint64_t initial = 1ULL << ((move >> 6) & 0x3F), final = 1ULL << (move & 0x3F); //unpacks move to bitboard
     int nPos = move & 0x3F, iPos = (move >> 6) & 0x3F; //values for updating zobrist key
-    currentKey ^= zobStruct.blackToMove; //always toggles for turn switch
+    currentKey ^= zobStruct->blackToMove; //always toggles for turn switch
     if(enpassant){
       int enPos = __builtin_ctzll(enpassant);
-      currentKey ^= zobStruct.enpassantFile[enPos%8]; //toggles enpassant
+      currentKey ^= zobStruct->enpassantFile[enPos%8]; //toggles enpassant
     }
 
     for(auto p : allPieces){
       if(bitboards[active][p] & initial){ //finds the piece being moved
-        currentKey ^= zobStruct.pieceSquare[p + (6 * active)][iPos]; //toggles old piece position
+        currentKey ^= zobStruct->pieceSquare[p + (6 * active)][iPos]; //toggles old piece position
         if(p == PAWN){
           halfTurns = 0;
           if(final == enpassant){
             bitboards[!active][p] &= ~(active ? final << 8: final >> 8); //removes captured pawn
             occupied[!active] &= ~(active ? final << 8: final >> 8);
             enpassant = 0ULL; //no new enpassant
-            currentKey ^= zobStruct.pieceSquare[PAWN + (6 * !active)][nPos + (8*!active) - (8*active)]; //toggle enpassanted pawn
+            currentKey ^= zobStruct->pieceSquare[PAWN + (6 * !active)][nPos + (8*!active) - (8*active)]; //toggle enpassanted pawn
           }
           else if(abs((move & 0x3F) - ((move >> 6) & 0x3F)) == 16){
             enpassant = active ? final << 8: final >> 8; //sets new enpassant position
-            currentKey ^= zobStruct.enpassantFile[nPos%8];
+            currentKey ^= zobStruct->enpassantFile[nPos%8];
           }
         }
         else{
@@ -478,40 +495,46 @@
           if(p == KING){
             int dis = nPos - iPos;
             if(dis == 2){ //kingside
-              bitboards[active][ROOK] &= ~(1ULL << (nPos + 1)); //removes rook from old position
-              bitboards[active][ROOK] |= (1ULL << (nPos - 1)); //adds rook to new position
-              castleState &= ~castleStateChecks[2*active];
               int rkIPos = iPos + 3, rkNPos = nPos - 1;
-              currentKey ^= zobStruct.pieceSquare[ROOK + (6 * active)][rkIPos];
-              currentKey ^= zobStruct.pieceSquare[ROOK + (6 * active)][rkNPos];
-              currentKey ^= zobStruct.castlingRights[2*active];            
+              bitboards[active][ROOK] &= ~(1ULL << rkIPos); //removes rook from old position
+              bitboards[active][ROOK] |= (1ULL << rkNPos); //adds rook to new position
+              castleState &= ~castleStateChecks[2*active];
+              occupied[active] &= ~(1ULL << rkIPos);
+              occupied[active] |= (1ULL << rkNPos);
+             
+              currentKey ^= zobStruct->pieceSquare[ROOK + (6 * active)][rkIPos];
+              currentKey ^= zobStruct->pieceSquare[ROOK + (6 * active)][rkNPos];
+              currentKey ^= zobStruct->castlingRights[2*active];            
             }
             else if(dis == -2){ //queenside
-              bitboards[active][ROOK] &= ~(1ULL << (nPos - 2));
-              bitboards[active][ROOK] |= (1ULL << (nPos + 1));
-              castleState &= ~castleStateChecks[2*active+1];
               int rkIPos = iPos - 4, rkNPos = nPos + 1;
-              currentKey ^= zobStruct.pieceSquare[ROOK + (6 * active)][rkIPos];
-              currentKey ^= zobStruct.pieceSquare[ROOK + (6 * active)][rkNPos];
-              currentKey ^= zobStruct.castlingRights[1 + (2*active)];
+              bitboards[active][ROOK] &= ~(1ULL << rkIPos);
+              bitboards[active][ROOK] |= (1ULL << rkNPos);
+              occupied[active] &= ~(1ULL << rkIPos);
+              occupied[active] |= (1ULL << rkNPos);
+              castleState &= ~castleStateChecks[2*active+1];
+              
+              currentKey ^= zobStruct->pieceSquare[ROOK + (6 * active)][rkIPos];
+              currentKey ^= zobStruct->pieceSquare[ROOK + (6 * active)][rkNPos];
+              currentKey ^= zobStruct->castlingRights[1 + (2*active)];
             }
             if(castleState & castleStateChecks[2*active+1]){
               castleState &= ~castleStateChecks[2*active+1];
-              currentKey ^= zobStruct.castlingRights[1 + (2*active)];
+              currentKey ^= zobStruct->castlingRights[1 + (2*active)];
             }
             if(castleState & castleStateChecks[2*active]){
-              currentKey ^= zobStruct.castlingRights[2*active];
+              currentKey ^= zobStruct->castlingRights[2*active];
               castleState &= ~castleStateChecks[2*active];
             }
           }
           else if(castleState & castleStateChecks[2*active+1] && initial == 1ULL << (56*active)){ //queenside rook moves
             castleState ^= castleStateChecks[2*active+1]; //toggles castle state and zobrist key 
-            currentKey ^= zobStruct.castlingRights[1 + (2 * active)];
+            currentKey ^= zobStruct->castlingRights[1 + (2 * active)];
 
           }
           else if(castleState & castleStateChecks[2*active] && initial == 1ULL << (7 + 56*active)){ //kingside rook moves
             castleState ^= castleStateChecks[2*active]; //toggles castle state and zobrist key 
-            currentKey ^= zobStruct.castlingRights[2 * active];
+            currentKey ^= zobStruct->castlingRights[2 * active];
           }
           
           bitboards[active][p] ^= initial; //removes old position
@@ -520,7 +543,7 @@
         }
 
 
-        currentKey ^= zobStruct.pieceSquare[p + (6 * active)][nPos]; //toggles new piece position
+        currentKey ^= zobStruct->pieceSquare[p + (6 * active)][nPos]; //toggles new piece position
         bitboards[active][p] |= 1ULL << (move & 0x3F);
         occupied[active] ^= initial; //removes old position from full board
         occupied[active] |= 1ULL << (move & 0x3F); //adds new position to players full board
@@ -530,15 +553,15 @@
         active = static_cast<Color>(!active); //changes player
         for(auto e: allPieces){
           if((final & bitboards[active][e])){ //checks if one of piece type is on the moved to space
-            currentKey ^= zobStruct.pieceSquare[e + (6 * active)][nPos];
+            currentKey ^= zobStruct->pieceSquare[e + (6 * active)][nPos];
             bitboards[active][e] &= ~occupied[static_cast<Color>(!active)]; //removes captured piece from piece type, ensures no overlaps
             if(e == ROOK){ //edge case incase an unmoved rook is captured with its castle available
               if(nPos == 7 + 56*active && castleState & castleStateChecks[2*active]){ //checks if an unmoved rook is captured kingside
-                currentKey ^= zobStruct.castlingRights[2*active]; //toggle castle rights
+                currentKey ^= zobStruct->castlingRights[2*active]; //toggle castle rights
                 castleState &= ~castleStateChecks[2*active];
               }
               else if(nPos == 56*active && castleState & castleStateChecks[1 + 2*active]){ //checks if an unmoved rook is captured queenside
-                currentKey ^= zobStruct.castlingRights[2*active + 1]; //toggle castle rights
+                currentKey ^= zobStruct->castlingRights[2*active + 1]; //toggle castle rights
                 castleState &= ~castleStateChecks[2*active + 1];
               }
             }
@@ -561,25 +584,25 @@
   }
 
   std::string chessState::searchMove(){
-    int maxDepth = 5, bestScore = -1000020, maxNodes = -1;
+    int maxDepth = 5;
     uint16_t bestMove = 0ULL;
     std::vector<uint16_t> moves = getAllMovesBit(); //generates fully legal move list
     int nodeBest;
-    
-    std::sort(moves.begin(), moves.end(),
-    [&](uint16_t A, uint16_t B){ //custom sorting for the packed bit
-      int fA = (A >> 6) & 0x3F, tA =  A & 0x3F;
-      int fB = (B >> 6) & 0x3F, tB =  B & 0x3F;
-      int fAfile =  fA % 8,  fArank =  fA / 8;
-      int fBfile =  fB % 8,  fBrank =  fB / 8;
-      if(fAfile != fBfile) return fAfile < fBfile;
-      if(fArank != fBrank) return fArank < fBrank;
-      int tAfile =  tA % 8,  tArank =  tA / 8;
-      int tBfile =  tB % 8,  tBrank =  tB / 8;
-      if(tAfile != tBfile) return tAfile < tBfile;
-      return tArank < tBrank;
-    });
-    
+    nodesExplored = 0;
+    int mNodes = -1; //REMOVE THIS FROM MINIMAX SEARCH
+    //std::sort(moves.begin(), moves.end(),
+    //[&](uint16_t A, uint16_t B){ //custom sorting for the packed bit
+    //  int fA = (A >> 6) & 0x3F, tA =  A & 0x3F;
+    //  int fB = (B >> 6) & 0x3F, tB =  B & 0x3F;
+    //  int fAfile =  fA % 8,  fArank =  fA / 8;
+    //  int fBfile =  fB % 8,  fBrank =  fB / 8;
+    //  if(fAfile != fBfile) return fAfile < fBfile;
+    //  if(fArank != fBrank) return fArank < fBrank;
+    //  int tAfile =  tA % 8,  tArank =  tA / 8;
+    //  int tBfile =  tB % 8,  tBrank =  tB / 8;
+    //  if(tAfile != tBfile) return tAfile < tBfile;
+    //  return tArank < tBrank;
+    //});
     //std::cout<<moves.size()<<std::endl;
     //for(auto c: moves){
     //  int initial = (c >> 6) & 0x3F;
@@ -625,19 +648,24 @@
     int a = -22222222, b = -a;
     int score;
     for(auto c: legalMoves){
-      maxNodes--;
+      
       chessState node(*this);
       if(node.updateBoard(c)){
-        score = -1000000;
+        score = -1000013;
       }
       else{
-        score = -minimaxSearchAB(node, maxDepth-1, -b, -a, 1, maxNodes); //passes values appropriately for alpha beta pruning
+        score = -minimaxSearchAB(node, maxDepth-1, -b, -a, 1, mNodes); //passes values appropriately for alpha beta pruning
       }
       if(score > a){
         a = score;
         bestMove = c;
       }
     }
+
+    if(a == -1000013){
+      return("Threefold");
+    }
+
     int init = bestMove >> 6 & 0x3F, final = bestMove & 0x3F;
     std::string moveString = toAlgebraic(init) + toAlgebraic(final);
 
@@ -659,108 +687,123 @@
       break;
     }
     std::cout<<moveString<<std::endl;
+    std::cout<<nodesExplored<<std::endl;
     updateBoard(bestMove);
-    printBoard();
     return moveString;
   }
 
   int chessState::minimaxSearchAB(chessState& state, int depth, int a, int b, int dist, int& mNodes){
-    int holdA = a;
-    uint16_t tableBest = 0ULL;
-
-    tableEntry* entry  = tTable->getTable(state.currentKey);
-    if(entry != nullptr){ //uses transpose table to help prune for best value quicker
-      tableBest = entry->bestMove;
-      if(entry->depth >= depth){
-        int eScore = entry->score;
-        //adjusts mate score to signify how close the mate is
-        if(eScore >= mateScore - dist){ //reaches mate
-          eScore = mateScore - dist;
-        }
-        else if(eScore <= -mateScore + dist){ //gets mated
-          eScore = -mateScore + dist;
-        }
-        if(entry->flag == EXACT){ //the value is the best one found for the state
-          return eScore;
-        }
-        else if(entry->flag == LOWER){
-          if(eScore >= b){
+    try
+    {
+      int holdA = a;
+      uint16_t tableBest = 1ULL;
+      
+      tableEntry* entry  = tTable->getTable(state.currentKey);
+      if(entry != nullptr){ //uses transpose table to help prune for best value quicker
+        tableBest = entry->bestMove;
+        if(entry->depth >= depth){
+          int eScore = entry->score;
+          //adjusts mate score to signify how close the mate is
+          if(eScore >= mateScore - dist){ //reaches mate
+            eScore = mateScore - dist;
+          }
+          else if(eScore <= -mateScore + dist){ //gets mated
+            eScore = -mateScore + dist;
+          }
+          if(entry->flag == EXACT){ //the value is the best one found for the state
             return eScore;
           }
-          a = std::max(a, eScore);
-        }
-        else if(entry->flag == UPPER){
-          if(eScore <= a){
-            return eScore; //no moves are better than the passed alpha
+          else if(entry->flag == LOWER){
+            if(eScore >= b){
+              return eScore;
+            }
+            a = std::max(a, eScore);
           }
-          b = std::min(b, eScore);
+          else if(entry->flag == UPPER){
+            if(eScore <= a){
+              return eScore; //no moves are better than the passed alpha
+            }
+            b = std::min(b, eScore);
+          }
         }
       }
-    }
 
-
-    if(depth == 0){
-      return evaluationHeuristic(state);
-    }
-    if(mNodes == 0){
-      return a;
-    }
-    std::vector<uint16_t> moves = state.getAllMovesBit();
-    std::vector<uint16_t> legal;
-    if(tableBest != 0ULL && state.legalMove(tableBest)){
-      legal.push_back(tableBest);
-    }
-    for(auto c : moves){
-      if(state.legalMove(c) && c != tableBest){
-        legal.push_back(c);
-      }
-    }
-    
-    if(legal.size() == 0){
-      int kingPos = __builtin_ctzll(state.bitboards[state.active][KING]);
-      if(state.isThreatenedBit(kingPos)){
-        return -1000000 + dist;
-      }
-      int value = evaluationHeuristic(state); //reflects the state after other player moved, if its negative they had a stronger state so decentivize draw
-      return -value/2;
-    }
-    uint16_t bestMove = 0ULL;
-    for(auto c: legal){
-      int score;
-      mNodes--;
-      chessState node(state);
-
-      if(node.updateBoard(c))
-        continue;
-      else
-        score = -(state.minimaxSearchAB(node, depth-1, -b, -a, dist+1, mNodes));
-
-      if(score > a){
-        a = score;  
-        bestMove = c;
-      }
-      if(a >= b){
-        tTable->store(state.currentKey, depth, a, LOWER, bestMove, dist);
-        return b;
+      if(depth < -3 || (nodesExplored > maxNodes && depth < 0)){ //actual maximum possible depth and max board updates allowed
+        return evaluationHeuristic(state);
       }
 
+      if(mNodes == 0){
+        return a;
+      }
+
+      std::vector<uint16_t> moves = state.getAllMovesBit();
+      std::vector<uint16_t> legal(0);
+      if(tableBest > 1ULL && state.legalMove(tableBest)){
+        legal.push_back(tableBest);
+      }
       
-    }
+      for(auto c : moves){
+        if(state.legalMove(c) && c != tableBest){
+          if(depth <= 0){ //only adds for capture moves and the transpose saved move when past minimum depth
+            int nPos = (c & 0x3F);
+            if(nPos & occupied[!active]){
+              legal.push_back(c);
+            }
+          }
+          else
+            legal.push_back(c);
+        }
+      }
+      int z = legal.size();
+      if(legal.size() == 0){
+        int kingPos = __builtin_ctzll(state.bitboards[state.active][KING]);
+        if(state.isThreatenedBit(kingPos)){
+          return -1000000 + dist;
+        }
+        int value = evaluationHeuristic(state); //reflects the state after other player moved, if its negative they had a stronger state so decentivize draw
+        return -value/2;
+      }
+      uint16_t bestMove = 0ULL;
+      for(auto c: legal){
+        int score;
+        mNodes--;
+        chessState node(state);
 
-    tableFlag flag;
-    if(a <= holdA){
-      flag = UPPER;
-    }
-    else{
-      flag = EXACT;
+        if(node.updateBoard(c))
+          continue;
+        else
+          score = -(state.minimaxSearchAB(node, depth-1, -b, -a, dist+1, mNodes));
+
+        if(score > a){
+          a = score;  
+          bestMove = c;
+        }
+        if(a >= b){
+          tTable->store(state.currentKey, depth, a, LOWER, bestMove, dist);
+          return b;
+        }
+      }
+
+      tableFlag flag;
+      if(a <= holdA){
+        flag = UPPER;
+      }
+      else{
+        flag = EXACT;
+      }
+      tTable->store(state.currentKey, depth, a, flag, bestMove, dist);
+      return a;
+      }
+    catch(const std::exception& e)
+    {
+      printBoard();
+      throw std::runtime_error("king capture");
     }
     
-    tTable->store(state.currentKey, depth, a, flag, bestMove, dist);
-    return a;
+    
   }
 
   int chessState::evaluationHeuristic(chessState& state){
-    
     int score = 0;
     uint64_t fBoard = state.occupied[state.active] | state.occupied[!state.active]; //full board
     for(int c = 0; c < 2; c++){
@@ -779,7 +822,6 @@
       uint64_t enemyKingCoverage = retrieveAttackBoard(kingPos, static_cast<Color>(!c), KING, 0ULL); //board state not needed for king mask
       int sign = (c == state.active) ? 1 : -1, pressure = 0; //pressure gives scoring relative to specific spaces threatened, cumulated and stored so conditions can boost
       bool check = true;
-
 
       for(int p = 0; p < 6; p++){
         uint64_t pieces = state.bitboards[c][p];
@@ -808,9 +850,22 @@
             score += sign * 5 * moveCount;
 
             if(p == PAWN){ //adds value the further advanced a pawn is
-              score += sign * 5 * abs((5*c + 1) - ((pos/8)));
+              score += sign * 20 * abs((5*c + 1) - (1 + (pos/8)));
             }
             pieces &= ~(1ULL << pos);
+          }
+        }
+        else{
+          int pos = __builtin_ctzll(pieces);
+          uint64_t kingAttack = retrieveAttackBoard(pos, static_cast<Color>(c), KING, state.occupied[0] | state.occupied[1]);
+          kingAttack &= state.bitboards[c][PAWN];
+          int bits = 0;
+          while(bits < 3 && kingAttack){
+            int msb = __builtin_ctzll(kingAttack);
+            kingAttack &= ~(msb);
+            bits++;
+            int devalue = std::min(((10 * bits) - fullTurns/3) * 3 / 2, 10);
+            score += sign * devalue;
           }
         }
       }
@@ -829,22 +884,22 @@
     for(int pos = 0; pos < 64; pos++){
       std::pair<PieceType, Color> posInfo = pieceAtZob(pos);
       if(posInfo.first != NOPIECE){
-        int zobristIndex = zobStruct.pieceSquare[posInfo.first + (6 * posInfo.second)][pos];
-        currentKey ^= zobStruct.pieceSquare[posInfo.first + (6 * posInfo.second)][pos];
+        int zobristIndex = zobStruct->pieceSquare[posInfo.first + (6 * posInfo.second)][pos];
+        currentKey ^= zobStruct->pieceSquare[posInfo.first + (6 * posInfo.second)][pos];
       }
     }
 
     if(active == BLACK)
-      currentKey ^=  zobStruct.blackToMove;
+      currentKey ^=  zobStruct->blackToMove;
 
-    if(castleState & castleStateChecks[0]) currentKey ^= zobStruct.castlingRights[0];
-    if(castleState & castleStateChecks[1]) currentKey ^= zobStruct.castlingRights[1];
-    if(castleState & castleStateChecks[2]) currentKey ^= zobStruct.castlingRights[2];
-    if(castleState & castleStateChecks[3]) currentKey ^= zobStruct.castlingRights[3];
+    if(castleState & castleStateChecks[0]) currentKey ^= zobStruct->castlingRights[0];
+    if(castleState & castleStateChecks[1]) currentKey ^= zobStruct->castlingRights[1];
+    if(castleState & castleStateChecks[2]) currentKey ^= zobStruct->castlingRights[2];
+    if(castleState & castleStateChecks[3]) currentKey ^= zobStruct->castlingRights[3];
 
     if(enpassant != 0ULL){
       int file = __builtin_ctzll(enpassant)%8;
-      currentKey ^= zobStruct.enpassantFile[file];
+      currentKey ^= zobStruct->enpassantFile[file];
     }
   }
 
@@ -864,3 +919,4 @@
     }
     return std::make_pair(NOPIECE, NOCOLOR);
   }
+

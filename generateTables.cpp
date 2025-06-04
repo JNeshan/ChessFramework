@@ -276,9 +276,9 @@ int main(){
   file << "#include <cstdint>\n\nstatic const uint64_t rookMagicNums[64] = {\n  ";
   for(int i = 0; i < 64; i++){
     file << rookMagic[i];
-    if(i + 1 < 64) file  << ", ";
+    if(i + 1 < 64) file  << "ULL, ";
   }
-  file << "};\n";
+  file << "ULL};\n";
 
   for(int pos = 0; pos < 64; pos++){ //same loop for bishop masks    
     uint64_t mask = bishopMask(pos);
@@ -313,10 +313,10 @@ int main(){
   file << "static const uint64_t bishopMagicNums[64] = {\n  ";
   for(int i = 0; i < 64; i++){
     file << bishopMagic[i];
-    if(i + 1 < 64) file  << ", ";
+    if(i + 1 < 64) file  << "ULL, ";
   }
 
-  file << "\n};\n";
+  file << "ULL\n};\n";
 
   std::ofstream attackFile("attackMasks.hpp");
   std::ofstream bitFile("bitOffset.hpp");

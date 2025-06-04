@@ -31,8 +31,9 @@ public:
 
   int halfTurns; //half turn clock
   int fullTurns; //full turn clock
+  int maxNodes = 1000000;
 
-  zobristKeys zobStruct; //used to create the key for indexing transpose table
+  zobristKeys* zobStruct; //used to create the key for indexing transpose table
 
   //constructors
   chessState(std::string iState); //forsyth-edwards based constructor
@@ -40,6 +41,8 @@ public:
 
   transpositionTable* tTable; //holds the found transpose tables, indexed using hash key
 
+  std::map<std::string, int> blackScores;
+  std::map<std::string, int> whiteScores;
 
   
   //the real functions
@@ -83,7 +86,9 @@ public:
   static const std::array<const int, 4> castleStateChecks; //references castle state bits
   static const std::array<const uint64_t, 4> castleSpaces; //references positions relevant to castling
   static const std::array<int, 6> pieceValues; //stores the value of a piece type for the heuristic
-  
+  static int nodesExplored;
+
+
   //move generation
   std::vector<uint16_t> pawnMoves(uint64_t pos); //move generation for pawn
   std::vector<uint16_t> slidingMoves(uint64_t pos, PieceType piece); //move generation for rook, bishop, and queen

@@ -89,9 +89,9 @@ int main(){
   for(int i = 0; i < storedKeys.size(); i++){
     output << storedKeys[i];
     if(storedKeys.size()-i != 1)
-       output << ", ";
+       output << "ULL, ";
   }
-  output <<"\n};";
+  output <<"ULL\n};";
   set<uint64_t> unique(storedKeys.begin(), storedKeys.end());
   if(unique.size() != storedKeys.size()){ 
     cout<<"bad seed"<<endl;
