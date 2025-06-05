@@ -31,7 +31,7 @@ public:
 
   int halfTurns; //half turn clock
   int fullTurns; //full turn clock
-  int maxNodes = 1000000;
+  int maxNodes = 5000000;
 
   zobristKeys* zobStruct; //used to create the key for indexing transpose table
 

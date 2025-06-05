@@ -45,11 +45,11 @@
   const std::array<const int, 4> chessState::castleStateChecks = {0b0001, 0b0010, 0b0100, 0b1000};
   const std::array<PieceType, 6> chessState::allPieces  = {PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING}; 
   const std::array<Color, 2> pieceColors = {WHITE, BLACK};
-  const std::array<int, 6> chessState::pieceValues = {100, 320, 330, 500, 900, 20000}; //change
+  const std::array<int, 6> chessState::pieceValues = {100, 300, 330, 500, 900, 20000}; //change
   int chessState::nodesExplored = 0;
 
   chessState::chessState(std::string iState){  
-    tTable = new transpositionTable(64);
+    tTable = new transpositionTable(512);
     int rank = 0, file = 0; int i = 0;
     while(true){
       char c = iState[i];
@@ -590,45 +590,7 @@
     int nodeBest;
     nodesExplored = 0;
     int mNodes = -1; //REMOVE THIS FROM MINIMAX SEARCH
-    //std::sort(moves.begin(), moves.end(),
-    //[&](uint16_t A, uint16_t B){ //custom sorting for the packed bit
-    //  int fA = (A >> 6) & 0x3F, tA =  A & 0x3F;
-    //  int fB = (B >> 6) & 0x3F, tB =  B & 0x3F;
-    //  int fAfile =  fA % 8,  fArank =  fA / 8;
-    //  int fBfile =  fB % 8,  fBrank =  fB / 8;
-    //  if(fAfile != fBfile) return fAfile < fBfile;
-    //  if(fArank != fBrank) return fArank < fBrank;
-    //  int tAfile =  tA % 8,  tArank =  tA / 8;
-    //  int tBfile =  tB % 8,  tBrank =  tB / 8;
-    //  if(tAfile != tBfile) return tAfile < tBfile;
-    //  return tArank < tBrank;
-    //});
-    //std::cout<<moves.size()<<std::endl;
-    //for(auto c: moves){
-    //  int initial = (c >> 6) & 0x3F;
-    //  int destination = c & 0x3F;
-    //  std::string m = toAlgebraic(initial) + toAlgebraic(destination);
-    //  switch (c >> 12 & 0xF)
-    //  {
-    //    case 0b0001:
-    //    m += "b";
-    //    break;
-    //    case 0b0010:
-    //    m += "n";
-    //    break;
-    //    case 0b0100:
-    //    m += "q";
-    //    break;
-    //    case 0b1000:
-    //    m += "r";
-    //    break;
-    //    default:
-    //    break;
-    //  }
-    //  
-    //  std::cout<<m<<" ";
-    //}
-    //std::cout<<" \n";
+
     
     std::vector<uint16_t> legalMoves(0); //creates new list of only fully legal moves
     for(auto c: moves){
@@ -807,7 +769,6 @@
     int score = 0;
     uint64_t fBoard = state.occupied[state.active] | state.occupied[!state.active]; //full board
     for(int c = 0; c < 2; c++){
-
       if(c == state.active){
         uint16_t left = state.lMoves >> 48 &0xFFFFULL;
         uint16_t right = state.rMoves >> 48 &0xFFFFULL;
@@ -821,7 +782,7 @@
       int kingPos = __builtin_ctzll(kingBit);
       uint64_t enemyKingCoverage = retrieveAttackBoard(kingPos, static_cast<Color>(!c), KING, 0ULL); //board state not needed for king mask
       int sign = (c == state.active) ? 1 : -1, pressure = 0; //pressure gives scoring relative to specific spaces threatened, cumulated and stored so conditions can boost
-      bool check = true;
+      bool check = false;
 
       for(int p = 0; p < 6; p++){
         uint64_t pieces = state.bitboards[c][p];
@@ -850,7 +811,7 @@
             score += sign * 5 * moveCount;
 
             if(p == PAWN){ //adds value the further advanced a pawn is
-              score += sign * 20 * abs((5*c + 1) - (1 + (pos/8)));
+              score += sign * 8 * abs((5*c + 1) - (1 + (pos/8)));
             }
             pieces &= ~(1ULL << pos);
           }
@@ -871,7 +832,7 @@
       }
       enemyKingCoverage &= ~occupied[!c]; //gets the mask of all spaces the enemy king is guarenteed to be able to safely
       int kingEscapes = __builtin_popcountll(enemyKingCoverage); //number of spaces a king can legally move to
-      score += sign * (pressure * ((9 * check) + 1) + 10 * check + (std::min(fullTurns/2, 20) * 5 * (pressure > 0) * !kingEscapes));
+      score += sign * (pressure * ((4 * check) + 1) + 10 * check + (std::min(fullTurns/2, 20) * 5 * (pressure > 0) * !kingEscapes));
                       //adds the value of pressure, multiplies if king is in check
                       //adds small bonus if king is in check at all
                       //if king has no escape routes and is experiencing pressure then a large bonus is added
